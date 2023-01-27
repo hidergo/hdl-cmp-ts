@@ -1,0 +1,25 @@
+<!-- Preloaded image definition. preload field has the same id which is defined in the code  -->
+<imgdef name="LOGO" preload="1" />
+<!-- Spritesheet. sw = sprite width. sh = sprite height -->
+<imgdef name="SPRITES" preload="2" sw="16" sh="16" />
+<!-- Loading image from disk. Note that this bundles the image to output file, so the output will be large -->
+<imgdef name="BUNDLED_IMAGE" src="test/image.bmp" />
+
+
+<box flexDir="row">
+    <box flexDir="col">
+        <box>
+            12:23
+        </box>
+        <box>
+            19.1
+        </box>
+    </box>
+    <!-- Displaying single image -->
+    <img name="LOGO" />
+    <box flexDir="col">
+        <!-- Spritesheet image -->
+        <img name="SPRITES" index="0" />
+        <img name="SPRITES" index="1" />
+    <box>
+</box>
