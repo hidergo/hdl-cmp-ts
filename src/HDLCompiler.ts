@@ -4,6 +4,43 @@ export default class HDLCompiler {
 
     xmlDoc : object;
 
+    document : HDLDocument;
+
+    parseXMLElement (element: object) {
+        let tagFound = false;
+        let tag = "";
+        let el = new HDLElement();
+        for(let k in element) {
+            if(k === ':@') {
+                // ATTRIBUTES
+                for(let a in element[k]) {
+                    el.attrs[a] = element[k][a];
+                }
+            }
+            else {
+                // TAG
+                if(tagFound) {
+                    console.error("ERROR: Multiple tags for object");
+                    return false;
+                }
+                tagFound = true;
+            }
+        }
+
+        if(!tagFound) {
+            console.error("ERROR: Tag not found");
+            return false;
+        }
+
+        // Children
+        for(let c of element[tag]) {
+            if(!this.parseXMLElement(c)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     constructor(data: string) {
 
         const options : Partial<X2jOptions> = {
@@ -14,7 +51,25 @@ export default class HDLCompiler {
         const parser = new XMLParser(options);
         this.xmlDoc = parser.parse(data);
 
-        console.log(JSON.stringify(this.xmlDoc, null, 2));
+        if(!this.xmlDoc) {
+            console.error("ERROR: Failed to parse XML");
+            return;
+        }
+
+        this.document = new HDLDocument();
+
+        if(Array.isArray(this.xmlDoc)) {
+            for(let o of this.xmlDoc) {
+                this.parseXMLElement(o);
+            }
+        }
+        else {
+            for(let o in this.xmlDoc) {
+                this.parseXMLElement(this.xmlDoc[o]);
+            }
+        }
+
+        //console.log(JSON.stringify(this.xmlDoc, null, 2));
     }
 
 }
@@ -100,6 +155,35 @@ class HDLImage {
     colorMode:      HDLColorMode;
     data:           Uint8Array;
     preloaded:      boolean;
+
+    compile () : Uint8Array {
+        let bytes : number[] = [];
+
+        bytes.push((this.preloaded ? 0x80 : 0) | (this.id & 0xFF));
+        bytes.push(this.id >> 8);
+
+        bytes.push(this.size & 0xFF);
+        bytes.push(this.size >> 8);
+
+        bytes.push(this.width & 0xFF);
+        bytes.push(this.width >> 8);
+
+        bytes.push(this.height & 0xFF);
+        bytes.push(this.height >> 8);
+
+        bytes.push(this.sprite_width);
+        bytes.push(this.sprite_height);
+
+        bytes.push(this.colorMode);
+
+        bytes.push(this.colorMode);
+
+        for(let i = 0; i < this.data.length; i++) {
+            bytes.push(this.data[i]);
+        }
+
+        return new Uint8Array(bytes);
+    }
 }
 
 class HDLDocument {
@@ -111,6 +195,49 @@ class HDLDocument {
     elements: HDLElement[] = [];
 
     bindings: {name: string, value: number}[] = [];
+
+    compile () : Uint8Array {
+        let bytes : number[] = [];
+
+        // Compiler minor/major version
+        bytes.push(0x00);
+        bytes.push(0x02);
+
+        // Bitmap count
+        bytes.push(this.images.length);
+
+        // Reserved / Vartable count
+        bytes.push(0);
+
+        // Element count
+        bytes.push(this.elements.length & 0xFF);
+        bytes.push((this.elements.length >> 8) & 0xFF);
+
+        // Padding until 16
+        while(bytes.length <= 16) {
+            bytes.push(0);
+        }
+
+        // Images
+        for(let b of this.images) {
+            const bt = b.compile();
+
+            for(let i = 0; i < bt.length; i++) {
+                bytes.push(bt[i]);
+            }
+        }
+
+        // Elements
+        for(let e of this.elements) {
+            const et = e.compile();
+
+            for(let i = 0; i < et.length; i++) {
+                bytes.push(et[i]);
+            }
+        }
+
+        return new Uint8Array(bytes);
+    }
 
 }
 
@@ -175,11 +302,22 @@ class HDLElement {
                         break;
                     case HDLType.HDL_TYPE_I16:
                     case HDLType.HDL_TYPE_IMG:
-                        bytes.push(valArr[i] >> 8);
                         bytes.push(valArr[i] & 0xFF);
+                        bytes.push((valArr[i] >> 8) & 0xFF);
+                        break;
+                    case HDLType.HDL_TYPE_I32:
+                        bytes.push(valArr[i] & 0xFF);
+                        bytes.push((valArr[i] >> 8) & 0xFF);
+                        bytes.push((valArr[i] >> 16) & 0xFF);
+                        bytes.push((valArr[i] >> 24) & 0xFF);
                         break;
                     case HDLType.HDL_TYPE_FLOAT:
-                        
+                        const f_arr = new Float32Array([valArr[i]]);
+                        const u8_arr = new Uint8Array(f_arr.buffer);
+                        bytes.push(u8_arr[0]);
+                        bytes.push(u8_arr[1]);
+                        bytes.push(u8_arr[2]);
+                        bytes.push(u8_arr[3]);
                         break;
                 }
             }
