@@ -6,10 +6,14 @@ export default class HDLCompiler {
 
     document : HDLDocument;
 
+    imageRunningNumber : number = 0;
+
     parseXMLElement (element: object) {
         let tagFound = false;
-        let tag = "";
-        let el = new HDLElement();
+        let el = {
+            tag: "",
+            attrs: {}
+        }
         for(let k in element) {
             if(k === ':@') {
                 // ATTRIBUTES
@@ -23,6 +27,7 @@ export default class HDLCompiler {
                     console.error("ERROR: Multiple tags for object");
                     return false;
                 }
+                el.tag = k;
                 tagFound = true;
             }
         }
@@ -32,8 +37,24 @@ export default class HDLCompiler {
             return false;
         }
 
+        if(el.tag === "imgdef") {
+            // Image definition
+            const img = new HDLImage();
+            
+            img.name = el.attrs["name"];
+            img.preloaded = el.attrs["preload"] !== undefined;
+            img.id = img.preloaded ? (0x8000 | el.attrs["preload"]) : this.imageRunningNumber++;
+
+            if(!img.preloaded) {
+                img.load(el.attrs["src"]);
+            }
+            
+            this.document.images.push(img);
+            return true;
+        }
+
         // Children
-        for(let c of element[tag]) {
+        for(let c of element[el.tag]) {
             if(!this.parseXMLElement(c)) {
                 return false;
             }
@@ -105,9 +126,6 @@ const HDLTransformList = {
     "bottom center":    0x20,
     "bottom left":      0x21,
     "bottom right":     0x22,
-
-
-
 }
 
 const HDLAttrName = {
@@ -155,6 +173,11 @@ class HDLImage {
     colorMode:      HDLColorMode;
     data:           Uint8Array;
     preloaded:      boolean;
+
+    
+    load (path: string) {
+        
+    }
 
     compile () : Uint8Array {
         let bytes : number[] = [];
@@ -404,8 +427,14 @@ function parseValue (value: string, document: HDLDocument) : {type: HDLType, val
                 }
                 // Image?
                 else if((tf = document.images.find(e => e.name === value))) {
-                    typeOut = HDLType.HDL_TYPE_IMG;
-                    valueOut = (tf.preloaded ? 0x8000 : 0) | Math.floor(tf.id);
+                    if(tf.preloaded) {
+                        typeOut = HDLType.HDL_TYPE_NULL;
+                        valueOut = 0;
+                    }
+                    else {
+                        typeOut = HDLType.HDL_TYPE_IMG;
+                        valueOut = Math.floor(tf.id);
+                    }
                 }
                 else {
                     // String?
