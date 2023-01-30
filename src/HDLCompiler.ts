@@ -1,4 +1,5 @@
 import { X2jOptions, XMLParser } from 'fast-xml-parser';
+import { readFileSync } from 'fs';
 
 export default class HDLCompiler {
 
@@ -161,22 +162,116 @@ enum HDLType {
     HDL_TYPE_COUNT
 };
 
+/*
+struct __attribute__((packed)) _BMP_Head {
+    // File header
+    struct __attribute__((packed)) {
+        // File signature, must be "BM"
+        char signature[2]; 0-1
+        // File size
+        uint32_t size; 2-5
+        // Reserved
+        uint8_t reserved0[4]; 6-9
+        // Pixel offset
+        uint32_t pixelOffset; 10-13
+    } fileHeader;
+
+    // Image header
+    struct __attribute__((packed)) {
+        // Header size
+        uint32_t headerSize; 14-17
+        // Image width
+        int32_t imageWidth; 18-21
+        // Image height
+        int32_t imageHeight; 22-25
+        // Planes
+        uint16_t planes; 26-27
+        // Bits per pixel
+        uint16_t bitsPerPixel; 28-29
+        // Compression
+        uint32_t compression; 30-33
+        // Image size
+        uint32_t imageSize; 34-37
+        // X Pixels per meter
+        int32_t xPixelsPerMeter; 38-41
+        // Y Pixels per meter
+        int32_t yPixelsPerMeter; 42-45
+        // Total colors
+        uint32_t totalColors; 46-49
+        // Important colors
+        uint32_t importantColors; 50-53
+    } imageHeader;
+};
+*/
 
 class HDLImage {
     name:           string;
     id:             number;
-    size:           number;
-    width:          number;
-    height:         number;
-    sprite_width:   number;
-    sprite_height:  number;
+    size:           number = 0;
+    width:          number = 0;
+    height:         number = 0;
+    sprite_width:   number = 0;
+    sprite_height:  number = 0;
     colorMode:      HDLColorMode;
     data:           Uint8Array;
     preloaded:      boolean;
 
     
-    load (path: string) {
-        
+    load (path: string) : boolean {
+        // Check extension
+        const pathSplit = path.split(".");
+        if(pathSplit[pathSplit.length - 1] !== 'bmp') {
+            console.warn("HDLImage.load: only .bmp supported");
+            return false;
+        }
+
+        try {
+            const arr = readFileSync(path);
+            const dv = new DataView(arr);
+
+            if(arr.length < 54) {
+                console.warn("HDLImage.load: Input bmp file too short");
+                return false;
+            }
+            if(dv.getUint8(0) !== 0x42 || dv.getUint8(1) !== 0x4D) {
+                console.warn("HDLImage.load: Incorrect bitmap header");
+                return false;
+            }
+            if(dv.getUint16(28) !== 1) {
+                console.warn("HDLImage.load: Only monocolor images supported");
+                return false;
+            }
+
+            const row_l = (dv.getInt32(18) + 7) / 8;
+            const row_l_pad = (((dv.getInt32(18)+ 31) & ~31) >> 3);
+
+            this.colorMode = HDLColorMode.HDL_COLORS_MONO;
+            this.width = dv.getInt32(18);
+            this.height = dv.getInt32(22);
+            this.size = row_l * this.height;
+
+            // Set sprite width, height if not set
+            if(this.sprite_width === 0)
+                this.sprite_width = this.width;
+
+            if(this.sprite_height === 0) 
+                this.sprite_height = this.height;
+
+            this.data = new Uint8Array(this.size);
+
+            const pxoff = dv.getUint32(10);
+
+            for(let i = 0; i < this.size; i++) {
+                this.data[i] = dv.getUint8(i + pxoff);
+            }
+
+        }
+        catch (e) {
+            console.warn("HDLImage.load: Could not open '" + path + "'");
+            return false;
+        }
+
+        return true;
     }
 
     compile () : Uint8Array {
