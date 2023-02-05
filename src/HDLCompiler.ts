@@ -1,6 +1,6 @@
 import { X2jOptions, XMLParser } from 'fast-xml-parser';
-import { readFileSync } from 'fs';
-
+import { readFileSync, writeFileSync } from 'fs';
+let ecnt = 0;
 export default class HDLCompiler {
 
     xmlDoc : object;
@@ -9,17 +9,24 @@ export default class HDLCompiler {
 
     imageRunningNumber : number = 0;
 
-    parseXMLElement (element: object) {
+    parseXMLElement (element: {[key: string]: any}, parent?: HDLElement | null) {
+        
         let tagFound = false;
-        let el = {
+        let el : {tag: string, attrs: {[key: string]: any}} = {
             tag: "",
             attrs: {}
         }
+        ecnt++;
         for(let k in element) {
             if(k === ':@') {
                 // ATTRIBUTES
                 for(let a in element[k]) {
-                    el.attrs[a] = element[k][a];
+                    el.attrs[a.replace("@_", "")] = element[k][a];
+                }
+            }
+            else if(k === '#text') {
+                if(parent) {
+                    parent.content = element[k].toString();
                 }
             }
             else {
@@ -34,8 +41,8 @@ export default class HDLCompiler {
         }
 
         if(!tagFound) {
-            console.error("ERROR: Tag not found");
-            return false;
+            //console.error("ERROR: Tag not found");
+            return true;
         }
 
         if(el.tag === "imgdef") {
@@ -53,13 +60,29 @@ export default class HDLCompiler {
             this.document.images.push(img);
             return true;
         }
-
-        // Children
-        for(let c of element[el.tag]) {
-            if(!this.parseXMLElement(c)) {
+        else if(el.tag === "bind") {
+            // Binding
+            if(el.attrs["name"] === undefined || el.attrs["id"] === undefined) {
+                console.error("BIND definition requires 'name' and 'id' attributes!");
                 return false;
             }
+            this.document.bindings.push({name: el.attrs["name"], id: el.attrs["id"]});
         }
+        else if(Object.keys(HDLTagName).find(e => e === el.tag)) {
+            // Tag
+            const nel = new HDLElement(el.tag, this.document, parent);
+
+            nel.attrs = el.attrs;
+            nel.tag = el.tag;
+
+            // Children
+            for(let c of element[el.tag]) {
+                if(!this.parseXMLElement(c, nel)) {
+                    return false;
+                }
+            }
+        }
+
         return true;
     }
 
@@ -73,13 +96,13 @@ export default class HDLCompiler {
         const parser = new XMLParser(options);
         this.xmlDoc = parser.parse(data);
 
+        this.document = new HDLDocument();
+
         if(!this.xmlDoc) {
             console.error("ERROR: Failed to parse XML");
             return;
         }
-
-        this.document = new HDLDocument();
-
+        
         if(Array.isArray(this.xmlDoc)) {
             for(let o of this.xmlDoc) {
                 this.parseXMLElement(o);
@@ -87,11 +110,15 @@ export default class HDLCompiler {
         }
         else {
             for(let o in this.xmlDoc) {
-                this.parseXMLElement(this.xmlDoc[o]);
+                this.parseXMLElement((this.xmlDoc as {[key: string]: any})[o]);
             }
         }
+        
+        
+        const bytes = this.document.compile();
+        
+        writeFileSync("test/test.bin", bytes);
 
-        //console.log(JSON.stringify(this.xmlDoc, null, 2));
     }
 
 }
@@ -106,14 +133,14 @@ enum HDLColorMode {
     HDL_COLORS_PALLETTE
 }
 
-const HDLTagName = {
+const HDLTagName : {[key: string]: number} = {
     // Box - standard middle center aligned flex element
     "box":      0,
     // Switch - element that switches child disabled state according to "value" attribute
     "switch":   1
 }
 
-const HDLTransformList = {
+const HDLTransformList : {[key: string]: number} = {
     // Column/row
     "col":              1,
     "row":              2,
@@ -129,7 +156,7 @@ const HDLTransformList = {
     "bottom right":     0x22,
 }
 
-const HDLAttrName = {
+const HDLAttrName : {[key: string]: number} = {
     "x":        0,
     "y":        1,
     "width":    2,
@@ -205,16 +232,16 @@ struct __attribute__((packed)) _BMP_Head {
 */
 
 class HDLImage {
-    name:           string;
-    id:             number;
+    name:           string = "";
+    id:             number = 0xFFFF;
     size:           number = 0;
     width:          number = 0;
     height:         number = 0;
     sprite_width:   number = 0;
     sprite_height:  number = 0;
-    colorMode:      HDLColorMode;
-    data:           Uint8Array;
-    preloaded:      boolean;
+    colorMode:      HDLColorMode = HDLColorMode.HDL_COLORS_UNKNOWN;
+    data:           Uint8Array = new Uint8Array(0);
+    preloaded:      boolean = false;
 
     
     load (path: string) : boolean {
@@ -226,28 +253,28 @@ class HDLImage {
         }
 
         try {
-            const arr = readFileSync(path);
-            const dv = new DataView(arr);
+            const arr = new Uint8Array(readFileSync(path));
+            const dv = new DataView(arr.buffer);
 
             if(arr.length < 54) {
                 console.warn("HDLImage.load: Input bmp file too short");
                 return false;
             }
             if(dv.getUint8(0) !== 0x42 || dv.getUint8(1) !== 0x4D) {
-                console.warn("HDLImage.load: Incorrect bitmap header");
+                console.warn("HDLImage.load: Incorrect bitmap header " + dv.getUint8(0) + " " + dv.getUint8(1));
                 return false;
             }
-            if(dv.getUint16(28) !== 1) {
+            if(dv.getUint16(28, true) !== 1) {
                 console.warn("HDLImage.load: Only monocolor images supported");
                 return false;
             }
 
-            const row_l = (dv.getInt32(18) + 7) / 8;
-            const row_l_pad = (((dv.getInt32(18)+ 31) & ~31) >> 3);
+            const row_l = Math.floor((dv.getInt32(18, true) + 7) / 8);
+            const row_l_pad = (((dv.getInt32(18, true) + 31) & ~31) >> 3);
 
             this.colorMode = HDLColorMode.HDL_COLORS_MONO;
-            this.width = dv.getInt32(18);
-            this.height = dv.getInt32(22);
+            this.width = dv.getInt32(18, true);
+            this.height = dv.getInt32(22, true);
             this.size = row_l * this.height;
 
             // Set sprite width, height if not set
@@ -259,15 +286,24 @@ class HDLImage {
 
             this.data = new Uint8Array(this.size);
 
-            const pxoff = dv.getUint32(10);
+            const pxoff = dv.getUint32(10, true);
 
-            for(let i = 0; i < this.size; i++) {
-                this.data[i] = dv.getUint8(i + pxoff);
+            let inx = pxoff;
+
+            for(let i = this.height - 1; i >= 0; i--) {
+                for(let p = 0; p < row_l; p++) {
+                    this.data[row_l * i] = dv.getUint8(inx);
+                    inx++;
+                }
+                if(row_l != row_l_pad) {
+                    // Skip padding
+                    inx += row_l_pad - row_l;
+                }
             }
 
         }
         catch (e) {
-            console.warn("HDLImage.load: Could not open '" + path + "'");
+            console.warn("HDLImage.load: Could not open '" + path + "'" + e);
             return false;
         }
 
@@ -277,8 +313,8 @@ class HDLImage {
     compile () : Uint8Array {
         let bytes : number[] = [];
 
-        bytes.push((this.preloaded ? 0x80 : 0) | (this.id & 0xFF));
-        bytes.push(this.id >> 8);
+        bytes.push(this.id & 0xFF);
+        bytes.push((this.preloaded ? 0x80 : 0) | ((this.id >> 8) & 0xFF));
 
         bytes.push(this.size & 0xFF);
         bytes.push(this.size >> 8);
@@ -291,8 +327,6 @@ class HDLImage {
 
         bytes.push(this.sprite_width);
         bytes.push(this.sprite_height);
-
-        bytes.push(this.colorMode);
 
         bytes.push(this.colorMode);
 
@@ -312,7 +346,7 @@ class HDLDocument {
 
     elements: HDLElement[] = [];
 
-    bindings: {name: string, value: number}[] = [];
+    bindings: {name: string, id: number}[] = [];
 
     compile () : Uint8Array {
         let bytes : number[] = [];
@@ -322,7 +356,7 @@ class HDLDocument {
         bytes.push(0x02);
 
         // Bitmap count
-        bytes.push(this.images.length);
+        bytes.push(this.images.filter(e => !e.preloaded).length);
 
         // Reserved / Vartable count
         bytes.push(0);
@@ -332,27 +366,17 @@ class HDLDocument {
         bytes.push((this.elements.length >> 8) & 0xFF);
 
         // Padding until 16
-        while(bytes.length <= 16) {
+        while(bytes.length < 16) {
             bytes.push(0);
         }
 
         // Images
         for(let b of this.images) {
-            const bt = b.compile();
-
-            for(let i = 0; i < bt.length; i++) {
-                bytes.push(bt[i]);
-            }
+            if(!b.preloaded)
+                bytes = bytes.concat(Array.from(b.compile()));
         }
-
         // Elements
-        for(let e of this.elements) {
-            const et = e.compile();
-
-            for(let i = 0; i < et.length; i++) {
-                bytes.push(et[i]);
-            }
-        }
+        bytes = bytes.concat(Array.from(this.elements[0].compile()));
 
         return new Uint8Array(bytes);
     }
@@ -365,9 +389,23 @@ class HDLElement {
 
     attrs: {[key: string]: string} = {};
 
-    content: string;
+    content: string = "";
 
     doc: HDLDocument;
+
+    parent: HDLElement | null = null;
+
+    children: HDLElement[] = [];
+
+    constructor(tag : string, doc : HDLDocument, parent?: HDLElement | null) {
+        this.tag = tag;
+        this.doc = doc;
+        if(parent) {
+            this.parent = parent;
+            this.parent.children.push(this);
+        }
+        doc.elements.push(this);
+    }
 
     compile () : Uint8Array {
         let bytes : number[] = [];
@@ -392,7 +430,7 @@ class HDLElement {
 
         for(let i = 0; i < Object.keys(this.attrs).length; i++) {
             const attrId = HDLAttrName[Object.keys(this.attrs)[i]];
-            if(attrId) {
+            if(!attrId) {
                 // WARNING: Unknown attr name
                 bytes[attrCountIndex]--;
                 continue;
@@ -404,7 +442,6 @@ class HDLElement {
                 bytes[attrCountIndex]--;
                 continue;
             }
-            
             bytes.push(attrId);
             bytes.push(parsedVal.type);
             bytes.push(Array.isArray(parsedVal.value) ? parsedVal.value.length : 1);
@@ -441,6 +478,12 @@ class HDLElement {
             }
 
         }
+
+        bytes.push(this.children.length);
+        
+        for(let c of this.children) {
+            bytes = bytes.concat(Array.from(c.compile()));
+        }
         
         return new Uint8Array(bytes);
     }
@@ -456,7 +499,7 @@ function parseValue (value: string, document: HDLDocument) : {type: HDLType, val
             return { type: HDLType.HDL_TYPE_NULL, value: 0 };
         }
         
-        let vals = value.slice(1, value.length - 2).split(',');
+        let vals = value.slice(1, value.length - 1).split(',');
         valueOut = vals.filter((v) => !v.includes(",")).map((v) => {
             
             let parsedVal = parseValue(v, document);
@@ -496,7 +539,7 @@ function parseValue (value: string, document: HDLDocument) : {type: HDLType, val
                 })
                 if(bnd) {
                     typeOut = HDLType.HDL_TYPE_BIND;
-                    valueOut = bnd.value;
+                    valueOut = bnd.id;
                 }
                 else {
                     console.warn("WARNING: Binding " + value + " not found");
@@ -505,7 +548,7 @@ function parseValue (value: string, document: HDLDocument) : {type: HDLType, val
             }
             else {
                 // Transform from string to int
-                let tf : HDLImage | string | undefined = Object.keys(HDLTransformList).find(e => HDLTransformList[e] === value);
+                let tf : HDLImage | string | undefined = Object.keys(HDLTransformList).find(e => e === value);
                 if(tf) {
                     const val = HDLTransformList[tf];
                     // Integer
