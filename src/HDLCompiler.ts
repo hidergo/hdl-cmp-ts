@@ -56,6 +56,12 @@ export default class HDLCompiler {
             if(!img.preloaded) {
                 img.load(el.attrs["src"]);
             }
+            if(el.attrs["sw"] !== undefined) {
+                img.sprite_width = el.attrs["sw"] as number;
+            }
+            if(el.attrs["sh"] !== undefined) {
+                img.sprite_height = el.attrs["sh"] as number;
+            }
             
             this.document.images.push(img);
             return true;
@@ -292,7 +298,7 @@ class HDLImage {
 
             for(let i = this.height - 1; i >= 0; i--) {
                 for(let p = 0; p < row_l; p++) {
-                    this.data[row_l * i] = dv.getUint8(inx);
+                    this.data[row_l * i + p] = dv.getUint8(inx);
                     inx++;
                 }
                 if(row_l != row_l_pad) {

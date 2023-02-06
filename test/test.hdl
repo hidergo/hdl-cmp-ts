@@ -40,10 +40,10 @@
         Temp: %i
     </box>
     <!-- Displaying single image -->
-    <!--<img name="LOGO" />-->
+    <box img="BUNDLED_IMAGE" />
     <box flexdir="col">
         <!-- Spritesheet image -->
-        <img name="BUNDLED_SPRITES" index="0" />
-        <img name="BUNDLED_SPRITES" index="1" />
-    <box>
+        <box img="BUNDLED_SPRITES" sprite="0" />
+        <box img="BUNDLED_SPRITES" sprite="1" />
+    </box>
 </box>
