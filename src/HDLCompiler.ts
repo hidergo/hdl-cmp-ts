@@ -177,7 +177,9 @@ const HDLAttrName : {[key: string]: number} = {
     "disabled": 11,
     "value":    12,
     "sprite":   13,
-    "widget":   14
+    "widget":   14,
+    "border":   15,
+    "radius":   16
 }
 
 enum HDLType {
