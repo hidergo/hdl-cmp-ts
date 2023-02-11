@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { argv, exit } from 'process';
-import HDLCompiler from '../src/HDLCompiler';
+import HDLCompiler, { FileReaderInterface } from '../src/HDLCompiler';
 
 
 let sourceFile = "";
@@ -23,9 +23,35 @@ if(sourceFile.length <= 0) {
     exit(1);
 }
 
-const data = readFileSync(sourceFile);
-if(data.length <= 0) {
-    console.error("Empty file given");
+const readFileInterface : FileReaderInterface = (path, type) => {
+
+    try {
+        const buff = readFileSync(path);
+        if(type === "text") {
+            return buff.toString("utf-8");
+        }
+        else if(type === "binary") {
+            return new Uint8Array(buff);
+        }
+    }
+    catch (e) {
+        return undefined;
+    }
+
+}
+
+const comp = new HDLCompiler(readFileInterface);
+
+let ok : boolean;
+ok = comp.loadFile(sourceFile);
+if(!ok) {
+    console.warn("Failed to load source file");
     exit(1);
 }
-const comp = new HDLCompiler(data.toString());
+comp.compile();
+if(!ok) {
+    console.warn("Failed to compile");
+    exit(1);
+}
+
+console.log("Compiled");

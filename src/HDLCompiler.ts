@@ -1,15 +1,116 @@
-import { X2jOptions, XMLParser } from 'fast-xml-parser';
-import { readFileSync, writeFileSync } from 'fs';
+import { X2jOptions, XMLParser, XMLValidator, validationOptions } from 'fast-xml-parser';
+import { dirname, extname } from 'path';
+
 let ecnt = 0;
+
+export type FileReaderInterface = (path: string, type: 'text'|'binary') => string | Uint8Array | undefined;
+
 export default class HDLCompiler {
 
-    xmlDoc : object;
+    xmlDoc : object = {};
 
-    document : HDLDocument;
+    document : HDLDocument = new HDLDocument();
 
-    imageRunningNumber : number = 0;
+    public basePath : string = "./";
 
-    parseXMLElement (element: {[key: string]: any}, parent?: HDLElement | null) {
+    private imageRunningNumber : number = 0;
+
+    /**
+     * @brief Interface for file reading. Must be set to load images
+     */
+    public static readFileInterface : FileReaderInterface | undefined = undefined;
+
+    constructor(readFileInterface?: FileReaderInterface) {
+
+        if(readFileInterface) {
+            HDLCompiler.readFileInterface = readFileInterface;
+        }
+    }
+
+    public load (xml: string) : boolean {
+        
+        if(!HDLCompiler.readFileInterface) {
+            console.warn("File reading interface not set. Can't load bundled images");
+        }
+
+        const validatorOptions : Partial<validationOptions> = {
+            
+        }
+
+        const parseOptions : Partial<X2jOptions> = {
+            preserveOrder: true,
+            ignoreAttributes: false
+        }
+
+        const res = XMLValidator.validate(xml, validatorOptions);
+
+        if(res !== true) {
+            console.log("XML validation failed: ");
+            console.log(res);
+            return false;
+        }
+
+        const parser = new XMLParser(parseOptions);
+
+        this.xmlDoc = parser.parse(xml);
+
+        this.document = new HDLDocument();
+
+
+        if(!this.xmlDoc) {
+            console.error("ERROR: Failed to parse XML");
+            return false;
+        }
+        
+        if(Array.isArray(this.xmlDoc)) {
+            for(let o of this.xmlDoc) {
+                this.parseXMLElement(o);
+            }
+        }
+        else {
+            for(let o in this.xmlDoc) {
+                this.parseXMLElement((this.xmlDoc as {[key: string]: any})[o]);
+            }
+        }
+
+        return true;
+    }
+
+    public loadFile (path: string) : boolean {
+        if(!HDLCompiler.readFileInterface) {
+            console.warn("Can't read a file without setting HDLCompiler.readFileInterface");
+            return false;
+        }
+
+        let xml = HDLCompiler.readFileInterface(path, "text"); 
+
+        if(xml) {
+            if(typeof xml === "string") {
+                // OK
+            }
+            else if(xml instanceof Uint8Array) {
+                console.log("Expected string instead of Uint8Array");
+                return false;
+            }
+        }
+        else {
+            console.log("Could not load file");
+            return false;
+        }
+
+        this.basePath = dirname(path) + "/";
+
+        return this.load(xml);
+    }
+
+    public compile () : Uint8Array {
+
+        const bytes = this.document.compile();
+
+        return bytes;
+    }
+
+    private parseXMLElement (element: {[key: string]: any}, parent?: HDLElement | null) {
         
         let tagFound = false;
         let el : {tag: string, attrs: {[key: string]: any}} = {
@@ -54,7 +155,11 @@ export default class HDLCompiler {
             img.id = img.preloaded ? (0x8000 | el.attrs["preload"]) : this.imageRunningNumber++;
 
             if(!img.preloaded) {
-                img.load(el.attrs["src"]);
+                let loaded = img.load(el.attrs["src"], this);
+                if(!loaded) {
+                    console.log("Failed to load image");
+                    return false;
+                }
             }
             if(el.attrs["sw"] !== undefined) {
                 img.sprite_width = el.attrs["sw"] as number;
@@ -92,40 +197,6 @@ export default class HDLCompiler {
         return true;
     }
 
-    constructor(data: string) {
-
-        const options : Partial<X2jOptions> = {
-            preserveOrder: true,
-            ignoreAttributes: false
-        }
-
-        const parser = new XMLParser(options);
-        this.xmlDoc = parser.parse(data);
-
-        this.document = new HDLDocument();
-
-        if(!this.xmlDoc) {
-            console.error("ERROR: Failed to parse XML");
-            return;
-        }
-        
-        if(Array.isArray(this.xmlDoc)) {
-            for(let o of this.xmlDoc) {
-                this.parseXMLElement(o);
-            }
-        }
-        else {
-            for(let o in this.xmlDoc) {
-                this.parseXMLElement((this.xmlDoc as {[key: string]: any})[o]);
-            }
-        }
-        
-        
-        const bytes = this.document.compile();
-        
-        writeFileSync("test/test.bin", bytes);
-
-    }
 
 }
 
@@ -252,16 +323,22 @@ class HDLImage {
     preloaded:      boolean = false;
 
     
-    load (path: string) : boolean {
+    load (path: string, compiler: HDLCompiler) : boolean {
         // Check extension
-        const pathSplit = path.split(".");
-        if(pathSplit[pathSplit.length - 1] !== 'bmp') {
+        if(extname(path) !== '.bmp') {
             console.warn("HDLImage.load: only .bmp supported");
             return false;
         }
 
         try {
-            const arr = new Uint8Array(readFileSync(path));
+            let arr : undefined | string | Uint8Array = new Uint8Array(0);
+            if(HDLCompiler.readFileInterface) {
+                arr = HDLCompiler.readFileInterface(compiler.basePath + path, "binary");
+
+                if(arr === undefined || typeof arr === "string") {
+                    return false;
+                }
+            }
             const dv = new DataView(arr.buffer);
 
             if(arr.length < 54) {

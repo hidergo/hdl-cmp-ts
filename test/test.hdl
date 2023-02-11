@@ -12,9 +12,9 @@
     Bundled images are images, which are compiled (without compression) to the hdl output file.
 -->
 <!-- Loading image from disk. Note that this bundles the image to output file, so the output will be large -->
-<imgdef name="BUNDLED_IMAGE" src="test/image.bmp" />
+<imgdef name="BUNDLED_IMAGE" src="image.bmp" />
 <!-- Spritesheet. sw = sprite width. sh = sprite height -->
-<imgdef name="BUNDLED_SPRITES" src="test/sprites.bmp" sw="16" sh="16" />
+<imgdef name="BUNDLED_SPRITES" src="sprites.bmp" sw="16" sh="16" />
 
 <!-- You shouldn't define sprite width and height on preloaded images, they are defined when the images are compiled through the CLI -->
 
