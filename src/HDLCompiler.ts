@@ -1,5 +1,5 @@
 import { X2jOptions, XMLParser, XMLValidator, validationOptions } from 'fast-xml-parser';
-import { dirname, extname } from 'path';
+import { dirname, extname } from 'path-browserify';
 
 let ecnt = 0;
 
