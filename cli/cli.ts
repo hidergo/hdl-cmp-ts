@@ -42,16 +42,18 @@ const readFileInterface : FileReaderInterface = (path, type) => {
 
 const comp = new HDLCompiler(readFileInterface);
 
-let ok : boolean;
-ok = comp.loadFile(sourceFile);
-if(!ok) {
-    console.warn("Failed to load source file");
-    exit(1);
-}
-comp.compile();
-if(!ok) {
+comp.loadFile(sourceFile).then(ok => {
+    if(!ok) {
+        console.warn("Failed to load source file");
+        exit(1);
+    }
+    comp.compile();
+    if(!ok) {
+        console.warn("Failed to compile");
+        exit(1);
+    }
+    
+    console.log("Compiled");
+}).catch(e => {
     console.warn("Failed to compile");
-    exit(1);
-}
-
-console.log("Compiled");
+});

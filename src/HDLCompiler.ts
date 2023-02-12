@@ -3,7 +3,7 @@ import { dirname, extname } from 'path';
 
 let ecnt = 0;
 
-export type FileReaderInterface = (path: string, type: 'text'|'binary') => string | Uint8Array | undefined;
+export type FileReaderInterface = (path: string, type: 'text'|'binary') => (string | Uint8Array | undefined) | Promise<string | Uint8Array>;
 
 export default class HDLCompiler {
 
@@ -27,82 +27,101 @@ export default class HDLCompiler {
         }
     }
 
-    public load (xml: string) : boolean {
+    public load (xml: string) : Promise<boolean> {
         
         if(!HDLCompiler.readFileInterface) {
             console.warn("File reading interface not set. Can't load bundled images");
         }
 
-        const validatorOptions : Partial<validationOptions> = {
+        return new Promise(async (res, rej) => {
+            const validatorOptions : Partial<validationOptions> = {
+                
+            }
+    
+            const parseOptions : Partial<X2jOptions> = {
+                preserveOrder: true,
+                ignoreAttributes: false
+            }
+    
+            const valResult = XMLValidator.validate(xml, validatorOptions);
+    
+            if(valResult !== true) {
+                console.log("XML validation failed: ");
+                console.log(valResult);
+                res(false);
+                return;
+            }
+    
+            const parser = new XMLParser(parseOptions);
+    
+            this.xmlDoc = parser.parse(xml);
+    
+            this.document = new HDLDocument();
+    
+    
+            if(!this.xmlDoc) {
+                console.error("ERROR: Failed to parse XML");
+                res(false);
+                return;
+            }
             
-        }
+            if(Array.isArray(this.xmlDoc)) {
+                for(let o of this.xmlDoc) {
+                    await this.parseXMLElement(o);
+                }
+            }
+            else {
+                for(let o in this.xmlDoc) {
+                    await this.parseXMLElement((this.xmlDoc as {[key: string]: any})[o]);
+                }
+            }
+    
+            res(true);
+        })
 
-        const parseOptions : Partial<X2jOptions> = {
-            preserveOrder: true,
-            ignoreAttributes: false
-        }
+    }
 
-        const res = XMLValidator.validate(xml, validatorOptions);
+    public loadFile (path: string) : Promise<boolean> {
+        return new Promise (async (res, rej) => {
+            if(!HDLCompiler.readFileInterface) {
+                console.warn("Can't read a file without setting HDLCompiler.readFileInterface");
+                res(false);
+                return;
+            }
 
-        if(res !== true) {
-            console.log("XML validation failed: ");
-            console.log(res);
-            return false;
-        }
+            let xml : string | Uint8Array | undefined;
 
-        const parser = new XMLParser(parseOptions);
-
-        this.xmlDoc = parser.parse(xml);
-
-        this.document = new HDLDocument();
-
-
-        if(!this.xmlDoc) {
-            console.error("ERROR: Failed to parse XML");
-            return false;
-        }
+            if(HDLCompiler.readFileInterface instanceof Promise) {
+                xml = await HDLCompiler.readFileInterface(path, "text");
+            }
+            else {
+                xml = HDLCompiler.readFileInterface(path, "text") as (string | Uint8Array | undefined); 
+            }
         
-        if(Array.isArray(this.xmlDoc)) {
-            for(let o of this.xmlDoc) {
-                this.parseXMLElement(o);
+            if(xml) {
+                if(typeof xml === "string") {
+                    // OK
+                }
+                else if(xml instanceof Uint8Array) {
+                    console.log("Expected string instead of Uint8Array");
+                    res(false);
+                    return;
+                }
             }
-        }
-        else {
-            for(let o in this.xmlDoc) {
-                this.parseXMLElement((this.xmlDoc as {[key: string]: any})[o]);
+            else {
+                console.log("Could not load file");
+                res(false);
+                return;
             }
-        }
+        
+            this.basePath = dirname(path) + "/";
+        
+            let l = await this.load(xml);
 
-        return true;
+            res(l);
+        });
     }
-
-    public loadFile (path: string) : boolean {
-        if(!HDLCompiler.readFileInterface) {
-            console.warn("Can't read a file without setting HDLCompiler.readFileInterface");
-            return false;
-        }
-
-        let xml = HDLCompiler.readFileInterface(path, "text"); 
-
-        if(xml) {
-            if(typeof xml === "string") {
-                // OK
-            }
-            else if(xml instanceof Uint8Array) {
-                console.log("Expected string instead of Uint8Array");
-                return false;
-            }
-        }
-        else {
-            console.log("Could not load file");
-            return false;
-        }
-
-        this.basePath = dirname(path) + "/";
-
-        return this.load(xml);
-    }
-
+    
     public compile () : Uint8Array {
 
         const bytes = this.document.compile();
@@ -110,91 +129,101 @@ export default class HDLCompiler {
         return bytes;
     }
 
-    private parseXMLElement (element: {[key: string]: any}, parent?: HDLElement | null) {
+    private async parseXMLElement (element: {[key: string]: any}, parent?: HDLElement | null) : Promise<boolean> {
         
-        let tagFound = false;
-        let el : {tag: string, attrs: {[key: string]: any}} = {
-            tag: "",
-            attrs: {}
-        }
-        ecnt++;
-        for(let k in element) {
-            if(k === ':@') {
-                // ATTRIBUTES
-                for(let a in element[k]) {
-                    el.attrs[a.replace("@_", "")] = element[k][a];
-                }
-            }
-            else if(k === '#text') {
-                if(parent) {
-                    parent.content = element[k].toString();
-                }
-            }
-            else {
-                // TAG
-                if(tagFound) {
-                    console.error("ERROR: Multiple tags for object");
-                    return false;
-                }
-                el.tag = k;
-                tagFound = true;
-            }
-        }
+        return new Promise(async (res, rej) => {
 
-        if(!tagFound) {
-            //console.error("ERROR: Tag not found");
-            return true;
-        }
-
-        if(el.tag === "imgdef") {
-            // Image definition
-            const img = new HDLImage();
+            let tagFound = false;
+            let el : {tag: string, attrs: {[key: string]: any}} = {
+                tag: "",
+                attrs: {}
+            }
+            ecnt++;
+            for(let k in element) {
+                if(k === ':@') {
+                    // ATTRIBUTES
+                    for(let a in element[k]) {
+                        el.attrs[a.replace("@_", "")] = element[k][a];
+                    }
+                }
+                else if(k === '#text') {
+                    if(parent) {
+                        parent.content = element[k].toString();
+                    }
+                }
+                else {
+                    // TAG
+                    if(tagFound) {
+                        console.error("ERROR: Multiple tags for object");
+                        res(false);
+                        return;
+                    }
+                    el.tag = k;
+                    tagFound = true;
+                }
+            }
+    
+            if(!tagFound) {
+                //console.error("ERROR: Tag not found");
+                res(false);
+                return;
+            }
+    
+            if(el.tag === "imgdef") {
+                // Image definition
+                const img = new HDLImage();
+                
+                img.name = el.attrs["name"];
+                img.preloaded = el.attrs["preload"] !== undefined;
+                img.id = img.preloaded ? (0x8000 | el.attrs["preload"]) : this.imageRunningNumber++;
+    
+                if(!img.preloaded) {
+                    let loaded = await img.load(el.attrs["src"], this);
+                    if(!loaded) {
+                        console.log("Failed to load image");
+                        res(false);
+                        return;
+                    }
+                }
+                if(el.attrs["sw"] !== undefined) {
+                    img.sprite_width = el.attrs["sw"] as number;
+                }
+                if(el.attrs["sh"] !== undefined) {
+                    img.sprite_height = el.attrs["sh"] as number;
+                }
+                
+                this.document.images.push(img);
+                res(true);
+                return;
+            }
+            else if(el.tag === "bind") {
+                // Binding
+                if(el.attrs["name"] === undefined || el.attrs["id"] === undefined) {
+                    console.error("BIND definition requires 'name' and 'id' attributes!");
+                    res(true);
+                    return;
+                }
+                this.document.bindings.push({name: el.attrs["name"], id: el.attrs["id"]});
+            }
+            else if(Object.keys(HDLTagName).find(e => e === el.tag)) {
+                // Tag
+                const nel = new HDLElement(el.tag, this.document, parent);
+    
+                nel.attrs = el.attrs;
+                nel.tag = el.tag;
+    
+                // Children
+                for(let c of element[el.tag]) {
+                    if(!(await this.parseXMLElement(c, nel))) {
+                        res(false);
+                        return;
+                    }
+                }
+            }
             
-            img.name = el.attrs["name"];
-            img.preloaded = el.attrs["preload"] !== undefined;
-            img.id = img.preloaded ? (0x8000 | el.attrs["preload"]) : this.imageRunningNumber++;
-
-            if(!img.preloaded) {
-                let loaded = img.load(el.attrs["src"], this);
-                if(!loaded) {
-                    console.log("Failed to load image");
-                    return false;
-                }
-            }
-            if(el.attrs["sw"] !== undefined) {
-                img.sprite_width = el.attrs["sw"] as number;
-            }
-            if(el.attrs["sh"] !== undefined) {
-                img.sprite_height = el.attrs["sh"] as number;
-            }
-            
-            this.document.images.push(img);
-            return true;
-        }
-        else if(el.tag === "bind") {
-            // Binding
-            if(el.attrs["name"] === undefined || el.attrs["id"] === undefined) {
-                console.error("BIND definition requires 'name' and 'id' attributes!");
-                return false;
-            }
-            this.document.bindings.push({name: el.attrs["name"], id: el.attrs["id"]});
-        }
-        else if(Object.keys(HDLTagName).find(e => e === el.tag)) {
-            // Tag
-            const nel = new HDLElement(el.tag, this.document, parent);
-
-            nel.attrs = el.attrs;
-            nel.tag = el.tag;
-
-            // Children
-            for(let c of element[el.tag]) {
-                if(!this.parseXMLElement(c, nel)) {
-                    return false;
-                }
-            }
-        }
-
-        return true;
+            res(true);
+            return;
+        })
     }
 
 
@@ -323,76 +352,96 @@ class HDLImage {
     preloaded:      boolean = false;
 
     
-    load (path: string, compiler: HDLCompiler) : boolean {
-        // Check extension
-        if(extname(path) !== '.bmp') {
-            console.warn("HDLImage.load: only .bmp supported");
-            return false;
-        }
+    async load (path: string, compiler: HDLCompiler) : Promise<boolean> {
 
-        try {
-            let arr : undefined | string | Uint8Array = new Uint8Array(0);
-            if(HDLCompiler.readFileInterface) {
-                arr = HDLCompiler.readFileInterface(compiler.basePath + path, "binary");
+        return new Promise(async (res, rej) => {
+            // Check extension
+            if(extname(path) !== '.bmp') {
+                console.warn("HDLImage.load: only .bmp supported");
+                res(false);
+                return;
+            }
 
-                if(arr === undefined || typeof arr === "string") {
-                    return false;
+            try {
+                let arr : undefined | string | Uint8Array = new Uint8Array(0);
+                if(HDLCompiler.readFileInterface) {
+                    if(HDLCompiler.readFileInterface instanceof Promise) {
+                        arr = await HDLCompiler.readFileInterface(compiler.basePath + path, "binary");
+                    }
+                    else {
+                        arr = HDLCompiler.readFileInterface(compiler.basePath + path, "binary") as (string | Uint8Array | undefined); 
+                    }
+
+                    if(arr === undefined || typeof arr === "string") {
+                        res(false);
+                        return;
+                    }
                 }
-            }
-            const dv = new DataView(arr.buffer);
-
-            if(arr.length < 54) {
-                console.warn("HDLImage.load: Input bmp file too short");
-                return false;
-            }
-            if(dv.getUint8(0) !== 0x42 || dv.getUint8(1) !== 0x4D) {
-                console.warn("HDLImage.load: Incorrect bitmap header " + dv.getUint8(0) + " " + dv.getUint8(1));
-                return false;
-            }
-            if(dv.getUint16(28, true) !== 1) {
-                console.warn("HDLImage.load: Only monocolor images supported");
-                return false;
-            }
-
-            const row_l = Math.floor((dv.getInt32(18, true) + 7) / 8);
-            const row_l_pad = (((dv.getInt32(18, true) + 31) & ~31) >> 3);
-
-            this.colorMode = HDLColorMode.HDL_COLORS_MONO;
-            this.width = dv.getInt32(18, true);
-            this.height = dv.getInt32(22, true);
-            this.size = row_l * this.height;
-
-            // Set sprite width, height if not set
-            if(this.sprite_width === 0)
-                this.sprite_width = this.width;
-
-            if(this.sprite_height === 0) 
-                this.sprite_height = this.height;
-
-            this.data = new Uint8Array(this.size);
-
-            const pxoff = dv.getUint32(10, true);
-
-            let inx = pxoff;
-
-            for(let i = this.height - 1; i >= 0; i--) {
-                for(let p = 0; p < row_l; p++) {
-                    this.data[row_l * i + p] = dv.getUint8(inx);
-                    inx++;
+                else {
+                    res(false);
+                    return;
                 }
-                if(row_l != row_l_pad) {
-                    // Skip padding
-                    inx += row_l_pad - row_l;
+                const dv = new DataView(arr.buffer);
+
+                if(arr.length < 54) {
+                    console.warn("HDLImage.load: Input bmp file too short");
+                    res(false);
+
+                    return;
                 }
+                if(dv.getUint8(0) !== 0x42 || dv.getUint8(1) !== 0x4D) {
+                    console.warn("HDLImage.load: Incorrect bitmap header " + dv.getUint8(0) + " " + dv.getUint8(1));
+                    res(false);
+                    return;
+                }
+                if(dv.getUint16(28, true) !== 1) {
+                    console.warn("HDLImage.load: Only monocolor images supported");
+                    res(false);
+                    return;
+                }
+
+                const row_l = Math.floor((dv.getInt32(18, true) + 7) / 8);
+                const row_l_pad = (((dv.getInt32(18, true) + 31) & ~31) >> 3);
+
+                this.colorMode = HDLColorMode.HDL_COLORS_MONO;
+                this.width = dv.getInt32(18, true);
+                this.height = dv.getInt32(22, true);
+                this.size = row_l * this.height;
+
+                // Set sprite width, height if not set
+                if(this.sprite_width === 0)
+                    this.sprite_width = this.width;
+
+                if(this.sprite_height === 0) 
+                    this.sprite_height = this.height;
+
+                this.data = new Uint8Array(this.size);
+
+                const pxoff = dv.getUint32(10, true);
+
+                let inx = pxoff;
+
+                for(let i = this.height - 1; i >= 0; i--) {
+                    for(let p = 0; p < row_l; p++) {
+                        this.data[row_l * i + p] = dv.getUint8(inx);
+                        inx++;
+                    }
+                    if(row_l != row_l_pad) {
+                        // Skip padding
+                        inx += row_l_pad - row_l;
+                    }
+                }
+
+            }
+            catch (e) {
+                console.warn("HDLImage.load: Could not open '" + path + "'" + e);
+                res(false);
+                return;
             }
 
-        }
-        catch (e) {
-            console.warn("HDLImage.load: Could not open '" + path + "'" + e);
-            return false;
-        }
-
-        return true;
+            res(true);
+        })
+        
     }
 
     compile () : Uint8Array {
