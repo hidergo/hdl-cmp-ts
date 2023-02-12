@@ -91,13 +91,15 @@ export default class HDLCompiler {
 
             let xml : string | Uint8Array | undefined;
 
-            if(HDLCompiler.readFileInterface instanceof Promise) {
-                xml = await HDLCompiler.readFileInterface(path, "text");
+            let xm = HDLCompiler.readFileInterface(path, "text");
+
+            if(xm instanceof Promise) {
+                xml = await xm;
             }
             else {
-                xml = HDLCompiler.readFileInterface(path, "text") as (string | Uint8Array | undefined); 
+                xml = xm;
             }
-        
+
             if(xml) {
                 if(typeof xml === "string") {
                     // OK
@@ -365,11 +367,13 @@ class HDLImage {
             try {
                 let arr : undefined | string | Uint8Array = new Uint8Array(0);
                 if(HDLCompiler.readFileInterface) {
-                    if(HDLCompiler.readFileInterface instanceof Promise) {
-                        arr = await HDLCompiler.readFileInterface(compiler.basePath + path, "binary");
+                    let xm = HDLCompiler.readFileInterface(path, "binary");
+
+                    if(xm instanceof Promise) {
+                        arr = await xm;
                     }
                     else {
-                        arr = HDLCompiler.readFileInterface(compiler.basePath + path, "binary") as (string | Uint8Array | undefined); 
+                        arr = xm;
                     }
 
                     if(arr === undefined || typeof arr === "string") {
