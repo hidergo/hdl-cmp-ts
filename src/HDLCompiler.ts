@@ -167,7 +167,7 @@ export default class HDLCompiler {
     
             if(!tagFound) {
                 //console.error("ERROR: Tag not found");
-                res(false);
+                res(true);
                 return;
             }
     
@@ -218,6 +218,7 @@ export default class HDLCompiler {
                 for(let c of element[el.tag]) {
                     if(!(await this.parseXMLElement(c, nel))) {
                         res(false);
+                        console.log("XML PARSE FAILED");
                         return;
                     }
                 }
@@ -367,8 +368,7 @@ class HDLImage {
             try {
                 let arr : undefined | string | Uint8Array = new Uint8Array(0);
                 if(HDLCompiler.readFileInterface) {
-                    let xm = HDLCompiler.readFileInterface(path, "binary");
-
+                    let xm = HDLCompiler.readFileInterface(compiler.basePath + path, "binary");
                     if(xm instanceof Promise) {
                         arr = await xm;
                     }
