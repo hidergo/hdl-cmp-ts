@@ -255,13 +255,13 @@ const HDLTransformList : {[key: string]: number} = {
     "row":              2,
     // Alignment
     "middle center":    0x00,
-    "middle left":      0x01,
-    "middle right":     0x02,
-    "top center":       0x10,
+    "middle left":      0x10,
+    "middle right":     0x20,
+    "top center":       0x01,
     "top left":         0x11,
-    "top right":        0x12,
-    "bottom center":    0x20,
-    "bottom left":      0x21,
+    "top right":        0x21,
+    "bottom center":    0x02,
+    "bottom left":      0x12,
     "bottom right":     0x22,
 }
 
