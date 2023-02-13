@@ -34,9 +34,9 @@
 <bind name="TEMPERATURE" id="3" />
 
 
-<box flexdir="row">
+<box flexdir="col">
     <!-- Displaying a float temperature value. You can use C sprintf style formatting on the values. -->
-    <box padding="10" flexdir="row">
+    <box padding="10" flexdir="col">
         <box bind="$TEMPERATURE" border="1" radius="4">
             Temp: %i
         </box>
@@ -46,7 +46,7 @@
     </box>
     <!-- Displaying single image -->
     <box img="BUNDLED_IMAGE" />
-    <box flexdir="col">
+    <box flexdir="row">
         <!-- Spritesheet image -->
         <box img="BUNDLED_SPRITES" sprite="0" />
         <box img="BUNDLED_SPRITES" sprite="1" />
