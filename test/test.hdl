@@ -36,9 +36,12 @@
 
 <box flexdir="row">
     <!-- Displaying a float temperature value. You can use C sprintf style formatting on the values. -->
-    <box padding="10">
-        <box bind="$TEMPERATURE" border="5" radius="10">
+    <box padding="10" flexdir="row">
+        <box bind="$TEMPERATURE" border="1" radius="4">
             Temp: %i
+        </box>
+        <box border="1">
+            Test
         </box>
     </box>
     <!-- Displaying single image -->
