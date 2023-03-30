@@ -588,13 +588,13 @@ class HDLElement {
             const valArr = Array.isArray(parsedVal.value) ? parsedVal.value : [parsedVal.value];
             for(let i = 0; i < valArr.length; i++) {
                 switch(parsedVal.type) {
-                    case HDLType.HDL_TYPE_BIND:
                     case HDLType.HDL_TYPE_BOOL:
                     case HDLType.HDL_TYPE_I8:
                         bytes.push(valArr[i]);
                         break;
                     case HDLType.HDL_TYPE_I16:
                     case HDLType.HDL_TYPE_IMG:
+                    case HDLType.HDL_TYPE_BIND:
                         bytes.push(valArr[i] & 0xFF);
                         bytes.push((valArr[i] >> 8) & 0xFF);
                         break;
@@ -646,10 +646,10 @@ function parseValue (value: string, document: HDLDocument) : {type: HDLType, val
         })
     }
     else {
-        let val = parseFloat(value);
+        let val = Number(value);
         if(!isNaN(val)) {
             // Number
-            if(Math.floor(Math.abs(val)) - val > 0.00001) {
+            if(Math.floor(Math.abs(val)) - Math.abs(val) > 0.00001) {
                 // Float
                 typeOut = HDLType.HDL_TYPE_FLOAT;
                 valueOut = val;
@@ -703,14 +703,9 @@ function parseValue (value: string, document: HDLDocument) : {type: HDLType, val
                 }
                 // Image?
                 else if((tf = document.images.find(e => e.name === value))) {
-                    if(tf.preloaded) {
-                        typeOut = HDLType.HDL_TYPE_NULL;
-                        valueOut = 0;
-                    }
-                    else {
-                        typeOut = HDLType.HDL_TYPE_IMG;
-                        valueOut = Math.floor(tf.id);
-                    }
+                    
+                    typeOut = HDLType.HDL_TYPE_IMG;
+                    valueOut = Math.floor(tf.id);
                 }
                 else {
                     // String?
