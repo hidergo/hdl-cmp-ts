@@ -40,7 +40,8 @@ export default class HDLCompiler {
     
             const parseOptions : Partial<X2jOptions> = {
                 preserveOrder: true,
-                ignoreAttributes: false
+                ignoreAttributes: false,
+                parseTagValue: false
             }
     
             const valResult = XMLValidator.validate(xml, validatorOptions);
