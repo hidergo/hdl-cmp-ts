@@ -151,6 +151,7 @@ export default class HDLCompiler {
                 else if(k === '#text') {
                     if(parent) {
                         parent.content = element[k].toString();
+                        parent.content = parent.content.replace("\\n", "\n");
                     }
                 }
                 else {
