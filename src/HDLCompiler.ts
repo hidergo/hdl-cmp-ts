@@ -642,7 +642,7 @@ function parseValue (value: string, document: HDLDocument) : {type: HDLType, val
         let vals = value.slice(1, value.length - 1).split(',');
         valueOut = vals.filter((v) => !v.includes(",")).map((v) => {
             
-            let parsedVal = parseValue(v, document);
+            let parsedVal = parseValue(v.replace(/^\s+|\s+$/gm,''), document);
             typeOut = parsedVal.type;
             return parsedVal.value as number;
         })
