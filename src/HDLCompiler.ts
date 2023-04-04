@@ -505,6 +505,10 @@ class HDLDocument {
         bytes.push(this.elements.length & 0xFF);
         bytes.push((this.elements.length >> 8) & 0xFF);
 
+        // File size (will be set later)
+        bytes.push(0);
+        bytes.push(0);
+
         // Padding until 16
         while(bytes.length < 16) {
             bytes.push(0);
@@ -517,6 +521,10 @@ class HDLDocument {
         }
         // Elements
         bytes = bytes.concat(Array.from(this.elements[0].compile()));
+
+        // Set file size
+        bytes[6] = bytes.length & 0xFF;
+        bytes[7] = (bytes.length >> 8) & 0xFF;
 
         return new Uint8Array(bytes);
     }
