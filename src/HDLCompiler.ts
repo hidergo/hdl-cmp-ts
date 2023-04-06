@@ -247,6 +247,8 @@ enum HDLColorMode {
 const HDLTagName : {[key: string]: number} = {
     // Box - standard middle center aligned flex element
     "box":      0,
+    "text":     0,
+    "image":    0,
     // Switch - element that switches child disabled state according to "value" attribute
     "switch":   1
 }
