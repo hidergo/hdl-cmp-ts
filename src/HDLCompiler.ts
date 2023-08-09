@@ -3,7 +3,27 @@ import { dirname, extname } from 'path-browserify';
 
 let ecnt = 0;
 
+const HDLErrors = {
+    0: "No errors",
+    1: "XML validation failed",
+    2: "File not found",
+    3: "Memory limit exceeded",
+    4: "Invalid format",
+    5: "Read file interface does not exist",
+    6: "BMP validation error"
+}
+
 export type FileReaderInterface = (path: string, type: 'text'|'binary') => (string | Uint8Array | undefined) | Promise<string | Uint8Array>;
+
+export type CompilationResult = {
+    status: boolean,
+    error?: {
+        errno: number,
+        message: string,
+        line: number,
+        column: number
+    }
+}
 
 export default class HDLCompiler {
 
@@ -27,7 +47,7 @@ export default class HDLCompiler {
         }
     }
 
-    public load (xml: string) : Promise<boolean> {
+    public load (xml: string) : Promise<CompilationResult> {
         
         if(!HDLCompiler.readFileInterface) {
             console.warn("File reading interface not set. Can't load bundled images");
@@ -49,7 +69,16 @@ export default class HDLCompiler {
             if(valResult !== true) {
                 console.log("XML validation failed: ");
                 console.log(valResult);
-                res(false);
+                res({
+                    status: false,
+                    error: {
+                        errno:      1,
+                        message:    HDLErrors[1],
+                        // TODO: set line/column
+                        line:       0,
+                        column:     0
+                    }
+                });
                 return;
             }
     
@@ -62,7 +91,16 @@ export default class HDLCompiler {
     
             if(!this.xmlDoc) {
                 console.error("ERROR: Failed to parse XML");
-                res(false);
+                res({
+                    status: false,
+                    error: {
+                        errno:      1,
+                        message:    HDLErrors[1],
+                        // TODO: set line/column
+                        line:       0,
+                        column:     0
+                    }
+                });
                 return;
             }
             
@@ -77,16 +115,26 @@ export default class HDLCompiler {
                 }
             }
     
-            res(true);
+            res({
+                status: true
+            });
         })
 
     }
 
-    public loadFile (path: string) : Promise<boolean> {
+    public loadFile (path: string) : Promise<CompilationResult> {
         return new Promise (async (res, rej) => {
             if(!HDLCompiler.readFileInterface) {
                 console.warn("Can't read a file without setting HDLCompiler.readFileInterface");
-                res(false);
+                res({
+                    status: false,
+                    error: {
+                        errno: 5,
+                        message: HDLErrors[5],
+                        line: 0,
+                        column: 0
+                    }
+                });
                 return;
             }
 
@@ -107,13 +155,29 @@ export default class HDLCompiler {
                 }
                 else if(xml instanceof Uint8Array) {
                     console.log("Expected string instead of Uint8Array");
-                    res(false);
+                    res({
+                        status: false,
+                        error: {
+                            errno: 4,
+                            message: HDLErrors[4],
+                            line: 0,
+                            column: 0
+                        }
+                    });
                     return;
                 }
             }
             else {
                 console.log("Could not load file");
-                res(false);
+                res({
+                    status: false,
+                    error: {
+                        errno: 2,
+                        message: HDLErrors[2],
+                        line: 0,
+                        column: 0
+                    }
+                });
                 return;
             }
         
@@ -359,13 +423,21 @@ class HDLImage {
     preloaded:      boolean = false;
 
     
-    async load (path: string, compiler: HDLCompiler) : Promise<boolean> {
+    async load (path: string, compiler: HDLCompiler) : Promise<CompilationResult> {
 
         return new Promise(async (res, rej) => {
             // Check extension
             if(extname(path) !== '.bmp') {
                 console.warn("HDLImage.load: only .bmp supported");
-                res(false);
+                res({
+                    status: false,
+                    error: {
+                        errno: 4,
+                        message: HDLErrors[4],
+                        line: 0,
+                        column: 0
+                    }
+                });
                 return;
             }
 
@@ -381,30 +453,70 @@ class HDLImage {
                     }
 
                     if(arr === undefined || typeof arr === "string") {
-                        res(false);
+                        res({
+                            status: false,
+                            error: {
+                                errno: 4,
+                                message: HDLErrors[4],
+                                line: 0,
+                                column: 0
+                            }
+                        });
                         return;
                     }
                 }
                 else {
-                    res(false);
+                    res({
+                        status: false,
+                        error: {
+                            errno: 5,
+                            message: HDLErrors[5],
+                            line: 0,
+                            column: 0
+                        }
+                    });
                     return;
                 }
                 const dv = new DataView(arr.buffer);
 
                 if(arr.length < 54) {
                     console.warn("HDLImage.load: Input bmp file too short");
-                    res(false);
+                    res({
+                        status: false,
+                        error: {
+                            errno: 6,
+                            message: HDLErrors[6] + " (file too small)",
+                            line: 0,
+                            column: 0
+                        }
+                    });
 
                     return;
                 }
                 if(dv.getUint8(0) !== 0x42 || dv.getUint8(1) !== 0x4D) {
                     console.warn("HDLImage.load: Incorrect bitmap header " + dv.getUint8(0) + " " + dv.getUint8(1));
-                    res(false);
+                    res({
+                        status: false,
+                        error: {
+                            errno: 6,
+                            message: HDLErrors[6] + " (Incorrect .bmp header)",
+                            line: 0,
+                            column: 0
+                        }
+                    });
                     return;
                 }
                 if(dv.getUint16(28, true) !== 1) {
                     console.warn("HDLImage.load: Only monocolor images supported");
-                    res(false);
+                    res({
+                        status: false,
+                        error: {
+                            errno: 6,
+                            message: HDLErrors[6] + " (Only mono color supported)",
+                            line: 0,
+                            column: 0
+                        }
+                    });
                     return;
                 }
 
@@ -443,11 +555,21 @@ class HDLImage {
             }
             catch (e) {
                 console.warn("HDLImage.load: Could not open '" + path + "'" + e);
-                res(false);
+                res({
+                    status: false,
+                    error: {
+                        errno: 2,
+                        message: HDLErrors[2],
+                        line: 0,
+                        column: 0
+                    }
+                });
                 return;
             }
 
-            res(true);
+            res({
+                status: true
+            });
         })
         
     }
